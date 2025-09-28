@@ -1,0 +1,38 @@
+{
+  "name": "lhu-dashboard-electron",
+  "version": "1.0.0",
+  "description": "A dashboard for lac hong university students",
+  "main": "main.ts",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "build": {
+    "appId": "com.chisadinchan.lhudashboard",
+    "productName": "LHU Dashboard",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*"
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.education"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "author": "Chisadin chan",
+  "license": "MIT", 
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  }
+}
