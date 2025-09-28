@@ -13,7 +13,8 @@
     "appId": "com.chisadinchan.lhudashboard",
     "productName": "LHU Dashboard",
     "directories": {
-      "output": "dist"
+      "buildResources": "assets/build", 
+      "output": "dist/${version}-${platform}-${arch}"
     },
     "files": [
       "**/*"
