@@ -1,4 +1,5 @@
-import { app, BrowserWindow, nativeImage } from "electron"
+import { app, BrowserWindow, nativeImage, shell } from "electron"
+import { autoUpdater } from "electron-updater"
 
 const appicon = nativeImage.createFromPath("./assets/appicon.jpg")
 const createWindow = () => {
@@ -9,6 +10,15 @@ const createWindow = () => {
         height: 725,
         icon: appicon
     })
+
+    // đừng mở link trong app pls 🙏🙏
+
+    win.webContents.setWindowOpenHandler(({url}) => {
+        shell.openExternal(url)
+        return {action: "deny"}
+    })
+
+    autoUpdater.checkForUpdatesAndNotify()
     
     win.setMenu(null)
     win.loadURL("https://lhu-dashboard.vercel.app")
@@ -24,6 +34,10 @@ app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
+})
+
+autoUpdater.on("update-downloaded", () => {
+    autoUpdater.quitAndInstall()
 })
 
 

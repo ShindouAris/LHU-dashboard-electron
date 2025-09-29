@@ -12,8 +12,15 @@
   "build": {
     "appId": "com.chisadinchan.lhudashboard",
     "productName": "LHU Dashboard",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ShindouAris",
+        "repo": "LHU-dashboard-electron"
+      }
+    ],
     "directories": {
-      "buildResources": "assets/build", 
+      "buildResources": "assets/build",
       "output": "dist/${version}-${platform}-${arch}"
     },
     "files": [
@@ -31,9 +38,12 @@
     }
   },
   "author": "Chisadin chan",
-  "license": "MIT", 
+  "license": "MIT",
   "devDependencies": {
     "electron": "^38.2.0",
     "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
   }
 }
