@@ -1,5 +1,6 @@
 import { app, BrowserWindow, nativeImage, shell } from "electron"
-import { autoUpdater } from "electron-updater"
+import updater from "electron-updater"
+const autoUpdater = updater.autoUpdater
 
 const appicon = nativeImage.createFromPath("./assets/appicon.jpg")
 const createWindow = () => {
