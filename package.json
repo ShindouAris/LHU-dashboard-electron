@@ -27,14 +27,17 @@
       "**/*"
     ],
     "mac": {
-      "target": "dmg",
+      "target": ["dmg", "zip"],
+      "arch": ["x64", "arm64"],
       "category": "public.app-category.education"
     },
     "win": {
-      "target": "nsis"
+      "target": ["nsis", "msi"],
+      "arch": ["ia32", "x64", "arm64"]
     },
     "linux": {
-      "target": "AppImage"
+      "target": ["AppImage", "tar.gz"],
+      "arch": ["x64", "arm64"]
     }
   },
   "author": "Chisadin chan",
