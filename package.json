@@ -1,6 +1,6 @@
 {
   "name": "lhu-dashboard-electron",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A dashboard for lac hong university students",
   "main": "main.ts",
   "type": "module",
