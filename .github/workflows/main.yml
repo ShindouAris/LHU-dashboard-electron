@@ -3,7 +3,7 @@ name: Build & Release
 on:
   push:
     tags:
-      - 'v*.*.*'  # trigger on tags like v1.0.0
+      - 'v*.*.*' 
 
 jobs:
   build:
@@ -14,7 +14,7 @@ jobs:
 
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v5
+      uses: actions/checkout@v4
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -24,29 +24,7 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Build Electron app
+    - name: Build & Publish Electron app
       run: npm run build
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: electron-build-${{ matrix.os }}
-        path: ./dist/
-        
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-    - name: Download all build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: ./release
-
-    - name: Create Release and Upload Assets
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        gh release create ${{ github.ref_name }} --title "Release ${{ github.ref_name }}" --generate-notes
-        cd ./release
-        zip -r ../electron-build-${{ github.ref_name }}.zip ./*
-        gh release upload ${{ github.ref_name }} ../electron-build-${{ github.ref_name }}.zip
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}
