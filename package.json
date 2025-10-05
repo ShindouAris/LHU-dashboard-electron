@@ -28,16 +28,16 @@
     ],
     "mac": {
       "target": ["dmg", "zip"],
-      "arch": ["x64", "arm64"],
+      "defaultArch": "x64",
       "category": "public.app-category.education"
     },
     "win": {
       "target": ["nsis", "msi"],
-      "arch": ["ia32", "x64", "arm64"]
+      "defaultArch": "x64"
     },
     "linux": {
       "target": ["AppImage", "tar.gz"],
-      "arch": ["x64", "arm64"]
+      "defaultArch": "x64"
     }
   },
   "author": "Chisadin chan",
