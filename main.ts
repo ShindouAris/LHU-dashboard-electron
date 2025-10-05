@@ -2,13 +2,13 @@ import { app, BrowserWindow, nativeImage, shell } from "electron"
 import updater from "electron-updater"
 const autoUpdater = updater.autoUpdater
 
-const appicon = nativeImage.createFromPath("./assets/appicon.jpg")
+const appicon = nativeImage.createFromPath("./assets/build/icon.png")
 const createWindow = () => {
 
     const win = new BrowserWindow({
         title: "LHU Dashboard",
         width: 1280,
-        height: 725,
+        height: 790,
         icon: appicon
     })
 
