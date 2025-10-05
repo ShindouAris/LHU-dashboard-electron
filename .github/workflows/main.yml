@@ -25,6 +25,7 @@ jobs:
       run: npm ci
 
     - name: Build & Publish Electron app
+      shell: bash
       run: |
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
           npx electron-builder --win --x64 --arm64
