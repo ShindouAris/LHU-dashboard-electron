@@ -1,9 +1,9 @@
 import { app, BrowserWindow, nativeImage, shell, Tray, Menu, Notification, ipcMain } from "electron"
 
 import updater from "electron-updater" 
-
 import path from "path";
 import fetch from "node-fetch";
+import { parseISO } from "date-fns";
 import { writeFileSync, readFileSync, existsSync } from "fs";
 
 
@@ -38,6 +38,9 @@ const routeRPCMap: Record<RouteKey, { details: string; state: string }> = {
 }
 
 const remindBeforeMinutes = 30;
+
+// Track notified classes to prevent spam
+const notifiedClasses = new Set<number>();
 
 rpcClient.on("ready", () => {
     console.log(`Client ${clientID} ready`);
@@ -93,6 +96,30 @@ const getConfig = (): Settings => {
     return JSON.parse(data) as Settings
 }
 
+export const StartAfter = (dateString: string): string | null => {
+  try {
+    const now = new Date()
+    const date = parseISO(dateString)
+    if (date <= now) return null
+
+    const diffMs = date.getTime() - now.getTime()
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000)
+
+    let result = ''
+    if (days > 0) result += `${days} ngày `
+    if (hours > 0) result += `${hours} giờ `
+    if (minutes > 0) result += `${minutes} phút `
+    if (seconds > 0) result += `${seconds} giây`
+
+    return result.trim() || '1 giây'
+  } catch {
+    return null
+  }
+}
+
 const checkClassReminder = (classData: ScheduleItem | null) => {
 
     if (!classData) return;
@@ -104,16 +131,27 @@ const checkClassReminder = (classData: ScheduleItem | null) => {
 
     const now = new Date();
 
-    const diffMs = remindTime.getTime() - now.getTime(); // còn bao nhiêu ms đến remindTime
+    // Clean up notified classes that have already passed
+    const classEndTime = new Date(classData.ThoiGianKT);
+    if (now.getTime() > classEndTime.getTime()) {
+        notifiedClasses.delete(classData.ID);
+        console.log(`Class ${classData.ID} has ended, removed from notified list`);
+        return;
+    }
+
+    const diffMs = now.getTime() - remindTime.getTime(); // còn bao nhiêu ms đến remindTime
     const diffMinutes = diffMs / (60 * 1000);
 
-    // nếu còn ≤30 phút nhưng chưa qua thời gian remindTime
-    if (diffMinutes <= 30) {
+    // nếu còn ≤30 phút nhưng chưa qua thời gian remindTime và chưa thông báo
+    if (diffMinutes <= 30 && !notifiedClasses.has(classData.ID)) {
         console.log("Sending class reminder notification...");
         new Notification({
             title: `Sắp đến tiết học ${classData.TenMonHoc}!`,
-            body: `Tiết học ${classData.TenMonHoc} sẽ bắt đầu lúc ${classTime.toLocaleTimeString()} tại phòng ${classData.TenPhong}, ${classData.TenCoSo}.`,
+            body: `Tiết học ${classData.TenMonHoc} sẽ bắt đầu sau ${StartAfter(classData.ThoiGianBD)} tại phòng ${classData.TenPhong}, ${classData.TenCoSo}.`,
+            icon: appicon
         }).show();
+        notifiedClasses.add(classData.ID);
+        console.log(`Class ${classData.ID} notified and added to tracking`);
     }
 }
 
@@ -254,9 +292,8 @@ app.whenReady().then(() => {
 
     const win = createWindow()
 
-    // This not works as expected
     win.webContents.on("did-finish-load", () => {
-        win.webContents.send("get-localstorage"); // now it will actually reach the renderer
+        win.webContents.send("get-localstorage");
         setInterval(() => {
             win.webContents.send("get-localstorage")
         }, 60_000)
