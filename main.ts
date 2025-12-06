@@ -1,5 +1,11 @@
-import { app, BrowserWindow, nativeImage, shell } from "electron"
+import { app, BrowserWindow, nativeImage, shell, Tray, Menu, Notification, ipcMain } from "electron"
+
 import updater from "electron-updater" 
+
+import path from "path";
+import { writeFileSync, readFileSync, existsSync } from "fs";
+
+
 const autoUpdater = updater.autoUpdater
 
 import { Client } from "discord-rpc"
@@ -26,7 +32,7 @@ const routeRPCMap: Record<RouteKey, { details: string; state: string }> = {
   "/mark": { details: "Xem điểm", state: "📊" },
   "/qrscan": { details: "Quét QR", state: "📷" },
   "/parking": { details: "Gửi xe", state: "🅿" },
-  "/settings": { details: "Cài đặt", state: "⚙" },
+  "/settings": { details: "Cài đặt", state: "🛠️" },
   "*": { details: "Không xác định", state: "Lang thang 💀" },
 }
 
@@ -68,13 +74,43 @@ const setActivity = (path: string) => {
         console.error('Error setting activity:', error);
     }
 }
+
+const getConfig = (): Settings => {
+    const settingsFilePath = path.join(app.getPath('userData'), "settings.json")
+    if (!existsSync(settingsFilePath)) {
+        writeFileSync(settingsFilePath, JSON.stringify({
+            autoStart: false,
+            minimizeToTray: true
+        }))
+        return {
+            autoStart: false,
+            minimizeToTray: true
+        }
+    }
+    const data = readFileSync(settingsFilePath, "utf-8")
+    return JSON.parse(data) as Settings
+}
+
+const updateConfig = (newConfig: Partial<Settings>) => {
+    const currentConfig = getConfig()
+    const updatedConfig = {...currentConfig, ...newConfig}
+    const settingsFilePath = path.join(app.getPath('userData'), "settings.json")
+    writeFileSync(settingsFilePath, JSON.stringify(updatedConfig, null, 4))
+}
+
 const createWindow = () => {
+
 
     const win = new BrowserWindow({
         title: "LHU Dashboard",
         width: 1280,
         height: 790,
-        icon: appicon
+        icon: appicon.resize({width: 256, height: 256}),
+        webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            preload: path.resolve(process.cwd(), "preload.js")
+        }
     })
 
     // đừng mở link trong app pls 🙏🙏
@@ -95,18 +131,71 @@ const createWindow = () => {
         setActivity(path)
     })
 
+    win.on("close", (e) => {
+        e.preventDefault()
+        win.hide()
+        new Notification({
+            title: "LHU Dashboard",
+            body: "Ứng dụng đang chạy dưới nền",
+            icon: appicon
+        }).show();
+    })
+    const tray = new Tray(appicon)
+    const contextMenu = Menu.buildFromTemplate([
+        {label: "Mở lại ứng dụng", click: () => win.show()},
+        {label: "Thoát Ứng dụng", click: () => app.exit()}
+    ])
+    tray.setToolTip("LHU Dashboard")
+    tray.setContextMenu(contextMenu
+    )
+    tray.on("double-click", () => {
+        win.isVisible() ? win.hide() : win.show()
+    })
+
     autoUpdater.checkForUpdatesAndNotify()
     
     win.setMenu(null)
     win.loadURL("https://lhu-dashboard.vercel.app")
+
 }
 
-// Mấy cái dưới này để quản lý vòng đời của app, docs của electron bảo v 🐧🐧
+// Handle IPC 
+
+ipcMain.handle("setAutoStart", (_, bool: boolean) => {
+    // lưu setting
+    updateConfig({autoStart: bool})
+    console.log(`AutoStart set to: ${bool}`)
+    app.setLoginItemSettings({ openAtLogin: bool }); // bật/tắt autostart
+});
+
+ipcMain.handle("getSettings", () => {
+    return getConfig();
+});
+
+ipcMain.handle("setMinimizeToTray", (_, bool: boolean) => {
+    updateConfig({minimizeToTray: bool})
+    console.log(`MinimizeToTray set to: ${bool}`)
+});
+
+
+// Mấy cái dưới này để quản lý vòng đời của app
+
+const config: Settings = getConfig()
 
 app.whenReady().then(() => {
+
     rpcClient.login({ clientId: clientID }).catch(console.error)
+
+    app.setLoginItemSettings({
+        openAtLogin: config.autoStart,
+        openAsHidden: config.minimizeToTray
+    })
+
     createWindow()
 })
+
+app.setAppUserModelId("LHU Dashboard");
+
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
@@ -117,12 +206,3 @@ app.on("activate", () => {
 autoUpdater.on("update-downloaded", () => {
     autoUpdater.quitAndInstall()
 })
-
-
-app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-        console.log("See yaaa!")
-        app.quit()
-    }
-}
-)
