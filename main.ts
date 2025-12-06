@@ -3,6 +3,7 @@ import { app, BrowserWindow, nativeImage, shell, Tray, Menu, Notification, ipcMa
 import updater from "electron-updater" 
 
 import path from "path";
+import fetch from "node-fetch";
 import { writeFileSync, readFileSync, existsSync } from "fs";
 
 
@@ -36,6 +37,7 @@ const routeRPCMap: Record<RouteKey, { details: string; state: string }> = {
   "*": { details: "Không xác định", state: "Lang thang 💀" },
 }
 
+const remindBeforeMinutes = 30;
 
 rpcClient.on("ready", () => {
     console.log(`Client ${clientID} ready`);
@@ -89,6 +91,30 @@ const getConfig = (): Settings => {
     }
     const data = readFileSync(settingsFilePath, "utf-8")
     return JSON.parse(data) as Settings
+}
+
+const checkClassReminder = (classData: ScheduleItem | null) => {
+
+    if (!classData) return;
+
+    console.log("Checking class reminder...");
+
+    const classTime = new Date(classData.ThoiGianBD);
+    const remindTime = new Date(classTime.getTime() - remindBeforeMinutes * 60 * 1000);
+
+    const now = new Date();
+
+    const diffMs = remindTime.getTime() - now.getTime(); // còn bao nhiêu ms đến remindTime
+    const diffMinutes = diffMs / (60 * 1000);
+
+    // nếu còn ≤30 phút nhưng chưa qua thời gian remindTime
+    if (diffMinutes <= 30) {
+        console.log("Sending class reminder notification...");
+        new Notification({
+            title: `Sắp đến tiết học ${classData.TenMonHoc}!`,
+            body: `Tiết học ${classData.TenMonHoc} sẽ bắt đầu lúc ${classTime.toLocaleTimeString()} tại phòng ${classData.TenPhong}, ${classData.TenCoSo}.`,
+        }).show();
+    }
 }
 
 const updateConfig = (newConfig: Partial<Settings>) => {
@@ -154,8 +180,11 @@ const createWindow = () => {
 
     autoUpdater.checkForUpdatesAndNotify()
     
-    win.setMenu(null)
-    win.loadURL("https://lhu-dashboard.vercel.app")
+    // win.setMenu(null)
+    // win.loadURL("https://lhu-dashboard.vercel.app")
+    win.loadURL("http://localhost:5173") // dev
+
+    return win
 
 }
 
@@ -177,6 +206,38 @@ ipcMain.handle("setMinimizeToTray", (_, bool: boolean) => {
     console.log(`MinimizeToTray set to: ${bool}`)
 });
 
+ipcMain.on("send-localstorage", async (event, data: User | null) => {
+//   console.log("LocalStorage data from React:", data);
+  if (data === null) {
+    console.log("Skipping class reminder check, no user data.");
+    return;
+  };
+
+  
+
+
+  try {
+    const payload = { studentID: data.UserID }; // just this
+    console.log("Payload:", payload);
+    const res = await fetch(`http://localhost:3000/next-class`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      console.error("Fetch failed:", res.statusText);
+      return;
+    }
+
+    const next_class: ScheduleItem = await res.json();
+
+    checkClassReminder(next_class);
+  } catch (err) {
+    console.error("Error fetching next class:", err);
+  }
+});
+
 
 // Mấy cái dưới này để quản lý vòng đời của app
 
@@ -191,8 +252,19 @@ app.whenReady().then(() => {
         openAsHidden: config.minimizeToTray
     })
 
-    createWindow()
+    const win = createWindow()
+
+    // This not works as expected
+    win.webContents.on("did-finish-load", () => {
+        win.webContents.send("get-localstorage"); // now it will actually reach the renderer
+        setInterval(() => {
+            win.webContents.send("get-localstorage")
+        }, 60_000)
+    });
+
 })
+
+
 
 app.setAppUserModelId("LHU Dashboard");
 
