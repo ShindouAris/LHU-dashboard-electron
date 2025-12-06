@@ -1,6 +1,6 @@
 {
   "name": "lhu-dashboard-electron",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A dashboard for lac hong university students",
   "main": "main.ts",
   "type": "module",
@@ -27,16 +27,25 @@
       "**/*"
     ],
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "defaultArch": "x64",
       "category": "public.app-category.education"
     },
     "win": {
-      "target": ["nsis", "msi"],
+      "target": [
+        "nsis",
+        "msi"
+      ],
       "defaultArch": "x64"
     },
     "linux": {
-      "target": ["AppImage", "tar.gz"],
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
       "defaultArch": "x64"
     }
   },
@@ -47,6 +56,8 @@
     "electron-builder": "^26.0.12"
   },
   "dependencies": {
+    "@types/discord-rpc": "^4.0.10",
+    "discord-rpc": "^4.0.1",
     "electron-updater": "^6.6.2"
   }
 }
