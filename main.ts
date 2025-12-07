@@ -5,7 +5,11 @@ import path from "path";
 import fetch from "node-fetch";
 import { parseISO } from "date-fns";
 import { writeFileSync, readFileSync, existsSync } from "fs";
+import { fileURLToPath } from "url";
 
+// Xử lý __dirname trong ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const autoUpdater = updater.autoUpdater
 
@@ -13,7 +17,25 @@ import { Client } from "discord-rpc"
 
 const clientID = "1446675403581292706"
 
-const appicon = nativeImage.createFromPath("./assets/build/icon.png")
+// Sử dụng __dirname để đảm bảo icon được tải đúng trong production
+const getIconPath = () => {
+  // Chọn định dạng icon phù hợp với OS
+  let iconExt = 'png'
+  if (process.platform === 'win32') {
+    iconExt = 'ico'
+  } else if (process.platform === 'darwin') {
+    iconExt = 'icns'
+  }
+
+  // Kiểm tra nếu chạy từ packaged app (ASAR)
+  if (process.resourcesPath?.includes('app.asar')) {
+    return path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'build', `icon.${iconExt}`)
+  }
+  // Nếu chạy từ development
+  return path.join(__dirname, 'assets', 'build', `icon.${iconExt}`)
+}
+
+const appicon = nativeImage.createFromPath(getIconPath())
 
 const uptime = new Date()
 
@@ -173,7 +195,7 @@ const createWindow = () => {
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
-            preload: path.resolve(process.cwd(), "preload.js")
+            preload: path.join(app.isPackaged ? process.resourcesPath : __dirname, "preload.js")
         }
     })
 

@@ -1,16 +1,20 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electron", {
-    isElectron: true,
-    setAutoStart: (bool) => ipcRenderer.invoke("setAutoStart", bool),
-    getSettings: () => ipcRenderer.invoke("getSettings"),
-    setAutoStart: (enabled) => ipcRenderer.invoke("setAutoStart", enabled),
-    setMinimizeToTray: (enabled) => ipcRenderer.invoke("setMinimizeToTray", enabled),
-    onGetLocalStorage: () => {
+  isElectron: true,
+  setAutoStart: (enabled) => ipcRenderer.invoke("setAutoStart", enabled),
+  getSettings: () => ipcRenderer.invoke("getSettings"),
+  setMinimizeToTray: (enabled) => ipcRenderer.invoke("setMinimizeToTray", enabled),
+  onGetLocalStorage: () => {
     ipcRenderer.on("get-localstorage", () => {
-      const dataStr = localStorage.getItem("auth_user");
-      const data = JSON.parse(dataStr);
-      ipcRenderer.send("send-localstorage", data);
+      try {
+        const dataStr = localStorage.getItem("auth_user");
+        const data = dataStr ? JSON.parse(dataStr) : null;
+        ipcRenderer.send("send-localstorage", data);
+      } catch (error) {
+        console.error("Error parsing localStorage:", error);
+        ipcRenderer.send("send-localstorage", null);
+      }
     });
   },
 });

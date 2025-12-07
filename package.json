@@ -1,6 +1,6 @@
 {
   "name": "lhu-dashboard-electron",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "A dashboard for lac hong university students",
   "main": "main.ts",
   "type": "module",
@@ -12,6 +12,24 @@
   "build": {
     "appId": "com.chisadinchan.lhudashboard",
     "productName": "LHU Dashboard",
+    "asarUnpack": [
+      "assets/build/*",
+      "preload.js"
+      
+    ],
+    "extraResources": [
+      {
+        "from": "assets/build",
+        "to": "assets/build",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "preload.js",
+        "to": "preload.js"
+      }
+    ],
     "publish": [
       {
         "provider": "github",
