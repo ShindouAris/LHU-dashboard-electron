@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage, shell, Tray, Menu, Notification, ipcMain } from "electron"
+import { app, BrowserWindow, nativeImage, shell, Tray, Menu, Notification, ipcMain, dialog } from "electron"
 
 import updater from "electron-updater" 
 import path from "path";
@@ -267,8 +267,6 @@ const createWindow = () => {
         win.isVisible() ? win.hide() : win.show()
     })
 
-    autoUpdater.checkForUpdatesAndNotify()
-    
     win.setMenu(null)
     win.loadURL("https://lhu-dashboard.vercel.app")
 
@@ -344,6 +342,9 @@ if (!gotTheLock) {
 
     app.whenReady().then(() => {
 
+        autoUpdater.checkForUpdatesAndNotify()
+
+
         rpcClient.login({ clientId: clientID }).catch(console.error)
 
         app.setLoginItemSettings({
@@ -374,6 +375,21 @@ app.on("activate", () => {
   }
 })
 
-autoUpdater.on("update-downloaded", () => {
-    autoUpdater.quitAndInstall()
+autoUpdater.on("update-downloaded", (info) => {
+    const win = BrowserWindow.getFocusedWindow()
+
+    const choice = dialog.showMessageBoxSync(win!, {
+        type: 'question',
+        buttons: ['Cập nhật ngay', 'Để sau'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'Đã có bản cập nhật',
+        message: `Phiên bản ${info.version} đã được tải về và sẵn sàng để cài đặt, bạn có muốn cập nhật ngay bây giờ không?`,
+        detail: 'Ứng dụng sẽ tự động khởi động lại sau khi cập nhật.'
+    })
+
+    if (choice === 0) {
+        autoUpdater.quitAndInstall()
+    }
+
 })
