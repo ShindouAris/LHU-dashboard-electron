@@ -188,7 +188,7 @@ const checkClassReminder = (classData: ScheduleItem | null) => {
         return;
     }
 
-    const diffMs = now.getTime() - remindTime.getTime(); // còn bao nhiêu ms đến remindTime
+    const diffMs =  remindTime.getTime() - now.getTime(); // còn bao nhiêu ms đến remindTime
     const diffMinutes = diffMs / (60 * 1000);
 
     // nếu còn ≤30 phút nhưng chưa qua thời gian remindTime và chưa thông báo
@@ -196,7 +196,7 @@ const checkClassReminder = (classData: ScheduleItem | null) => {
         console.log("Sending class reminder notification...");
         new Notification({
             title: `Sắp đến tiết học ${classData.TenMonHoc}!`,
-            body: `Tiết học ${classData.TenMonHoc} sẽ bắt đầu sau ${StartAfter(classData.ThoiGianBD)} tại phòng ${classData.TenPhong}, ${classData.TenCoSo}.`,
+            body: `Tiết học ${classData.TenMonHoc} sẽ bắt đầu sau ${StartAfter(classData.ThoiGianBD) || '1 giây'} tại phòng ${classData.TenPhong}, ${classData.TenCoSo}.`,
             icon: appicon
         }).show();
         notifiedClasses.add(classData.ID);
