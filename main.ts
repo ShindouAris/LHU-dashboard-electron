@@ -184,8 +184,9 @@ const updateConfig = (newConfig: Partial<Settings>) => {
     writeFileSync(settingsFilePath, JSON.stringify(updatedConfig, null, 4))
 }
 
-const createWindow = () => {
+let mainWindow: BrowserWindow | null = null
 
+const createWindow = () => {
 
     const win = new BrowserWindow({
         title: "LHU Dashboard",
@@ -301,26 +302,38 @@ ipcMain.on("send-localstorage", async (event, data: User | null) => {
 // Mấy cái dưới này để quản lý vòng đời của app
 
 const config: Settings = getConfig()
+const gotTheLock = app.requestSingleInstanceLock()
 
-app.whenReady().then(() => {
-
-    rpcClient.login({ clientId: clientID }).catch(console.error)
-
-    app.setLoginItemSettings({
-        openAtLogin: config.autoStart,
-        openAsHidden: config.minimizeToTray
+if (!gotTheLock) {
+    app.quit()
+} else {
+    app.on("second-instance", () => {
+        if (!mainWindow) return
+        if (mainWindow.isMinimized()) mainWindow.restore()
+        mainWindow.show()
+        mainWindow.focus()
     })
 
-    const win = createWindow()
+    app.whenReady().then(() => {
 
-    win.webContents.on("did-finish-load", () => {
-        win.webContents.send("get-localstorage");
-        setInterval(() => {
-            win.webContents.send("get-localstorage")
-        }, 60_000)
-    });
+        rpcClient.login({ clientId: clientID }).catch(console.error)
 
-})
+        app.setLoginItemSettings({
+            openAtLogin: config.autoStart,
+            openAsHidden: config.minimizeToTray
+        })
+
+        mainWindow = createWindow()
+
+        mainWindow.webContents.on("did-finish-load", () => {
+            mainWindow?.webContents.send("get-localstorage");
+            setInterval(() => {
+                mainWindow?.webContents.send("get-localstorage")
+            }, 60_000)
+        });
+
+    })
+}
 
 
 
@@ -329,7 +342,7 @@ app.setAppUserModelId("LHU Dashboard");
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
+        mainWindow = createWindow()
   }
 })
 
