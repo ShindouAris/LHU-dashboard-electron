@@ -129,20 +129,31 @@ const setActivityIdle = async () => {
     }
 }
 
+const DEFAULT_SETTINGS: Settings = {
+    autoStart: false,
+    minimizeToTray: true,
+    checkForUpdatesOnStart: true,
+}
+
 const getConfig = (): Settings => {
     const settingsFilePath = path.join(app.getPath('userData'), "settings.json")
-    if (!existsSync(settingsFilePath)) {
-        writeFileSync(settingsFilePath, JSON.stringify({
-            autoStart: false,
-            minimizeToTray: true
-        }))
-        return {
-            autoStart: false,
-            minimizeToTray: true
+
+    let settings: Partial<Settings> = {}
+    
+    if (existsSync(settingsFilePath)) {
+        try {
+            const data = readFileSync(settingsFilePath, "utf-8")
+            settings = JSON.parse(data)
+        } catch {
+            settings = {}
         }
     }
-    const data = readFileSync(settingsFilePath, "utf-8")
-    return JSON.parse(data) as Settings
+
+    const mergedSettings: Settings = { ...DEFAULT_SETTINGS, ...settings }
+
+    writeFileSync(settingsFilePath, JSON.stringify(mergedSettings, null, 2))
+
+    return mergedSettings
 }
 
 export const StartAfter = (dateString: string): string | null => {
@@ -292,6 +303,11 @@ ipcMain.handle("setMinimizeToTray", (_, bool: boolean) => {
     console.log(`MinimizeToTray set to: ${bool}`)
 });
 
+ipcMain.handle("setCheckForUpdatesOnStart", (_, bool: boolean) => {
+    updateConfig({checkForUpdatesOnStart: bool})
+    console.log(`CheckForUpdatesOnStart set to: ${bool}`)
+});
+
 ipcMain.on("send-localstorage", async (event, data: User | null) => {
 //   console.log("LocalStorage data from React:", data);
   if (data === null) {
@@ -305,7 +321,7 @@ ipcMain.on("send-localstorage", async (event, data: User | null) => {
   try {
     const payload = { studentID: data.UserID }; // just this
     console.log("Payload:", payload);
-    const res = await fetch(`http://localhost:3000/next-class`, {
+    const res = await fetch(`https://calenapi.chisadin.site/next-class`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -342,8 +358,9 @@ if (!gotTheLock) {
 
     app.whenReady().then(() => {
 
-        autoUpdater.checkForUpdatesAndNotify()
-
+        if (config.checkForUpdatesOnStart) {
+            autoUpdater.checkForUpdatesAndNotify()
+        }
 
         rpcClient.login({ clientId: clientID }).catch(console.error)
 

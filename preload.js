@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("electron", {
   setAutoStart: (enabled) => ipcRenderer.invoke("setAutoStart", enabled),
   getSettings: () => ipcRenderer.invoke("getSettings"),
   setMinimizeToTray: (enabled) => ipcRenderer.invoke("setMinimizeToTray", enabled),
+  setCheckForUpdatesOnStart: (enabled) => ipcRenderer.invoke("setCheckForUpdatesOnStart", enabled),
   onGetLocalStorage: () => {
     ipcRenderer.on("get-localstorage", () => {
       try {
