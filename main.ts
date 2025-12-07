@@ -218,9 +218,8 @@ const createWindow = () => {
 
     autoUpdater.checkForUpdatesAndNotify()
     
-    // win.setMenu(null)
-    // win.loadURL("https://lhu-dashboard.vercel.app")
-    win.loadURL("http://localhost:5173") // dev
+    win.setMenu(null)
+    win.loadURL("https://lhu-dashboard.vercel.app")
 
     return win
 
