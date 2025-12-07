@@ -17,6 +17,8 @@ import { Client } from "discord-rpc"
 
 const clientID = "1446675403581292706"
 
+let lastInteraction: number | null = null;
+
 // Sử dụng __dirname để đảm bảo icon được tải đúng trong production
 const getIconPath = () => {
   // Chọn định dạng icon phù hợp với OS
@@ -74,8 +76,12 @@ rpcClient.on("disconnected", () => {
     
 })
 
-const setActivity = (path: string) => {
+const setActivity = async (path: string) => {
     if (!rpcClient || !clientID) return
+
+    if (lastInteraction !== null && new Date().getTime() - lastInteraction < 15e3) return
+
+    lastInteraction = new Date().getTime()
 
     const key = (routeRPCMap[path as RouteKey] ? path : "*") as RouteKey
     const data = routeRPCMap[key]
@@ -87,7 +93,7 @@ const setActivity = (path: string) => {
             state: data.state || "Đang xem lịch học",
             startTimestamp: uptime,
             largeImageKey: "appicon",
-            instance: true,
+            instance: false,
             buttons: [
                 {label: "Truy cập LHU Dashboard", "url": "https://lhu-dashboard.chisadin.site"}
             ]
@@ -99,6 +105,27 @@ const setActivity = (path: string) => {
 
     } catch (error) {
         console.error('Error setting activity:', error);
+    }
+}
+
+const setActivityIdle = async () => {
+    if (!rpcClient || !clientID) return
+    if (lastInteraction !== null && new Date().getTime() - lastInteraction < 15e3) return
+    lastInteraction = new Date().getTime()
+    try {
+
+        rpcClient.setActivity({
+            details: "Không hoạt động",
+            state: "Ở chế độ rảnh",
+            startTimestamp: new Date(),
+            largeImageKey: "appicon",
+            instance: false,
+            buttons: [
+                {label: "Truy cập LHU Dashboard", "url": "https://lhu-dashboard.chisadin.site"}
+            ]
+        })
+    } catch (error) {
+        console.error('Error setting idle activity:', error);
     }
 }
 
@@ -226,6 +253,7 @@ const createWindow = () => {
             body: "Ứng dụng đang chạy dưới nền",
             icon: appicon
         }).show();
+        setActivityIdle();
     })
     const tray = new Tray(appicon)
     const contextMenu = Menu.buildFromTemplate([
