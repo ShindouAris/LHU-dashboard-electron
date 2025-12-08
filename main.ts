@@ -17,7 +17,10 @@ import { Client } from "discord-rpc"
 
 const clientID = "1446675403581292706"
 
+const isIndevelopment = !app.isPackaged
+
 let lastInteraction: number | null = null;
+let lastRpcPath: string | null = null;
 
 // Sử dụng __dirname để đảm bảo icon được tải đúng trong production
 const getIconPath = () => {
@@ -79,7 +82,9 @@ rpcClient.on("disconnected", () => {
 const setActivity = async (path: string) => {
     if (!rpcClient || !clientID) return
 
-    if (lastInteraction !== null && new Date().getTime() - lastInteraction < 15e3) return
+    if (lastInteraction !== null && new Date().getTime() - lastInteraction < 15e3 && lastRpcPath === path) return
+
+    lastRpcPath = path
 
     lastInteraction = new Date().getTime()
 
@@ -133,6 +138,9 @@ const DEFAULT_SETTINGS: Settings = {
     autoStart: false,
     minimizeToTray: true,
     checkForUpdatesOnStart: true,
+    notifyNextClassStartedSoon: true,
+    minimizeOnClose: true,
+    hardwareAcceleration: true
 }
 
 const getConfig = (): Settings => {
@@ -180,10 +188,11 @@ export const StartAfter = (dateString: string): string | null => {
   }
 }
 
+const config: () => Settings = () => {return getConfig()};
+
 const checkClassReminder = (classData: ScheduleItem | null) => {
 
-    if (!classData) return;
-
+    if (!classData || !config().notifyNextClassStartedSoon) return;
     console.log("Checking class reminder...");
 
     const classTime = new Date(classData.ThoiGianBD);
@@ -257,6 +266,12 @@ const createWindow = () => {
     })
 
     win.on("close", (e) => {
+        if (!config().minimizeOnClose) {
+            if (process.platform !== "darwin") {
+                app.quit()
+            }
+            return
+        }
         e.preventDefault()
         win.hide()
         new Notification({
@@ -277,9 +292,13 @@ const createWindow = () => {
     tray.on("double-click", () => {
         win.isVisible() ? win.hide() : win.show()
     })
-
-    win.setMenu(null)
-    win.loadURL("https://lhu-dashboard.vercel.app")
+    if (!isIndevelopment) {
+        win.setMenu(null)
+        win.loadURL("https://lhu-dashboard.vercel.app")
+    }
+    else {
+        win.loadURL("http://localhost:5173") // dev
+    }
 
     return win
 
@@ -308,15 +327,33 @@ ipcMain.handle("setCheckForUpdatesOnStart", (_, bool: boolean) => {
     console.log(`CheckForUpdatesOnStart set to: ${bool}`)
 });
 
+ipcMain.handle("setNotifyNextClassStartedSoon", (_, bool: boolean) => {
+    updateConfig({notifyNextClassStartedSoon: bool})
+    if (bool && !reminderCheckerInterval) {
+        createReminderChecker();
+    }
+    if (!bool && reminderCheckerInterval) {
+        clearReminderChecker();
+    }
+    console.log(`NotifyNextClassStartedSoon set to: ${bool}`)
+});
+
+ipcMain.handle("setMinimizeOnClose", (_, bool: boolean) => {
+    updateConfig({minimizeOnClose: bool})
+    console.log(`MinimizeOnClose set to: ${bool}`)
+});
+
+ipcMain.handle("setHardwareAcceleration", (_, bool: boolean) => {
+    updateConfig({hardwareAcceleration: bool})
+    console.log(`HardwareAcceleration set to: ${bool}`)
+});
+
 ipcMain.on("send-localstorage", async (event, data: User | null) => {
 //   console.log("LocalStorage data from React:", data);
   if (data === null) {
     console.log("Skipping class reminder check, no user data.");
     return;
   };
-
-  
-
 
   try {
     const payload = { studentID: data.UserID }; // just this
@@ -340,15 +377,53 @@ ipcMain.on("send-localstorage", async (event, data: User | null) => {
   }
 });
 
+ipcMain.handle("restartApp", () => {
+    app.relaunch();
+    app.exit(0);
+});
+
+// Quản lý mấy cái cron
+
+let reminderCheckerInterval: NodeJS.Timeout;
+
+const createReminderChecker = () => {
+    reminderCheckerInterval = setInterval(() => {
+        if (mainWindow) {
+            mainWindow.webContents.send("get-localstorage");
+        }
+    }, 60_000);
+}
+
+const clearReminderChecker = () => {
+    if (reminderCheckerInterval) {
+        clearInterval(reminderCheckerInterval);
+    }
+}
+
+const RpcChecker = () => setInterval(() => {
+    if (!rpcClient) return
+    if (lastInteraction === null || new Date().getTime() - lastInteraction >= 15e3) {
+        if (mainWindow && mainWindow.isVisible()) {
+            const url = new URL(mainWindow.webContents.getURL())
+            const path = url.pathname
+            setActivity(path)
+        } else {
+            setActivityIdle()
+    }
+}}, 15_000);
 
 // Mấy cái dưới này để quản lý vòng đời của app
 
-const config: Settings = getConfig()
 const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
     app.quit()
 } else {
+        
+    if (!config().hardwareAcceleration) {
+        app.disableHardwareAcceleration()
+    }
+
     app.on("second-instance", () => {
         if (!mainWindow) return
         if (mainWindow.isMinimized()) mainWindow.restore()
@@ -358,25 +433,28 @@ if (!gotTheLock) {
 
     app.whenReady().then(() => {
 
-        if (config.checkForUpdatesOnStart) {
+        if (config().checkForUpdatesOnStart) {
             autoUpdater.checkForUpdatesAndNotify()
         }
 
         rpcClient.login({ clientId: clientID }).catch(console.error)
 
         app.setLoginItemSettings({
-            openAtLogin: config.autoStart,
-            openAsHidden: config.minimizeToTray
+            openAtLogin: config().autoStart,
+            openAsHidden: config().minimizeToTray
         })
 
         mainWindow = createWindow()
 
         mainWindow.webContents.on("did-finish-load", () => {
-            mainWindow?.webContents.send("get-localstorage");
-            setInterval(() => {
-                mainWindow?.webContents.send("get-localstorage")
-            }, 60_000)
+            if (config().notifyNextClassStartedSoon) {
+                mainWindow?.webContents.send("get-localstorage");
+                createReminderChecker();
+            }
         });
+
+        RpcChecker();
+        
 
     })
 }

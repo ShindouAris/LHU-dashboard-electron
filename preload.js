@@ -1,11 +1,22 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electron", {
+  // Variables
   isElectron: true,
-  setAutoStart: (enabled) => ipcRenderer.invoke("setAutoStart", enabled),
+  
+  // Methods
   getSettings: () => ipcRenderer.invoke("getSettings"),
-  setMinimizeToTray: (enabled) => ipcRenderer.invoke("setMinimizeToTray", enabled),
+  forceRestartApp: () => ipcRenderer.invoke("restartApp"),
+  
+  // Functions to set individual settings
+  setAutoStart: (enabled) => ipcRenderer.invoke("setAutoStart", enabled),
   setCheckForUpdatesOnStart: (enabled) => ipcRenderer.invoke("setCheckForUpdatesOnStart", enabled),
+  setMinimizeToTray: (enabled) => ipcRenderer.invoke("setMinimizeToTray", enabled),
+  setNotifyNextClassStartedSoon: (enabled) => ipcRenderer.invoke("setNotifyNextClassStartedSoon", enabled),
+  setMinimizeOnClose: (enabled) => ipcRenderer.invoke("setMinimizeOnClose", enabled),
+  setHardwareAcceleration: (enabled) => ipcRenderer.invoke("setHardwareAcceleration", enabled),
+
+  // Callbacks
   onGetLocalStorage: () => {
     ipcRenderer.on("get-localstorage", () => {
       try {
@@ -18,4 +29,5 @@ contextBridge.exposeInMainWorld("electron", {
       }
     });
   },
+  
 });
