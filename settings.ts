@@ -5,4 +5,5 @@ interface Settings {
     notifyNextClassStartedSoon: boolean;
     minimizeOnClose: boolean;
     hardwareAcceleration: boolean;
+    useDiscordRpc: boolean;
 }

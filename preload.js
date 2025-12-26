@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("electron", {
   // Methods
   getSettings: () => ipcRenderer.invoke("getSettings"),
   forceRestartApp: () => ipcRenderer.invoke("restartApp"),
+  loggedOffUser: () => ipcRenderer.invoke('userLoggedOff'),
   
   // Functions to set individual settings
   setAutoStart: (enabled) => ipcRenderer.invoke("setAutoStart", enabled),
@@ -15,6 +16,7 @@ contextBridge.exposeInMainWorld("electron", {
   setNotifyNextClassStartedSoon: (enabled) => ipcRenderer.invoke("setNotifyNextClassStartedSoon", enabled),
   setMinimizeOnClose: (enabled) => ipcRenderer.invoke("setMinimizeOnClose", enabled),
   setHardwareAcceleration: (enabled) => ipcRenderer.invoke("setHardwareAcceleration", enabled),
+  setUseDiscordRpc: (enabled) => ipcRenderer.invoke("setUseDiscordRpc", enabled),
 
   // Callbacks
   onGetLocalStorage: () => {

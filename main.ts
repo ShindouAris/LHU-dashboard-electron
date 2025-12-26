@@ -22,6 +22,8 @@ const isIndevelopment = !app.isPackaged
 let lastInteraction: number | null = null;
 let lastRpcPath: string | null = null;
 
+let currentlyLoggedInUser: string | null = null;
+
 // Sử dụng __dirname để đảm bảo icon được tải đúng trong production
 const getIconPath = () => {
   // Chọn định dạng icon phù hợp với OS
@@ -46,7 +48,7 @@ const uptime = new Date()
 
 const rpcClient = new Client({transport: "ipc"})
 type RouteKey =
-  "/" | "/home" | "/login" | "/schedule" | "/timetable" | "/weather" |
+  "/" | "/home" | "/login" | "/schedule" | "/timetable" | "/weather" | "/toollhu/*" |
   "/diemdanh" | "/mark" | "/qrscan" | "/parking" | "/settings" | "*"
 
 const routeRPCMap: Record<RouteKey, { details: string; state: string }> = {
@@ -61,7 +63,27 @@ const routeRPCMap: Record<RouteKey, { details: string; state: string }> = {
   "/qrscan": { details: "Quét QR", state: "📷" },
   "/parking": { details: "Gửi xe", state: "🅿" },
   "/settings": { details: "Cài đặt", state: "🛠️" },
+  "/toollhu/*": { details: "Tool LHU", state: "⚙️" },
   "*": { details: "Không xác định", state: "Lang thang 💀" },
+}
+
+const createNotification = (title: string, body: string): Notification => {
+    const notification = new Notification({
+        title: title,
+        body: body,
+        icon: appicon
+    })
+    notification.on('click', () => {
+        notification.close();
+        if (mainWindow) {
+            if (!mainWindow.isVisible()) {
+                mainWindow.show();
+            } else {
+                mainWindow.focus();
+            }
+        }
+    })
+    return notification;
 }
 
 const remindBeforeMinutes = 30;
@@ -100,7 +122,7 @@ const setActivity = async (path: string) => {
             largeImageKey: "appicon",
             instance: false,
             buttons: [
-                {label: "Truy cập LHU Dashboard", "url": "https://lhu-dashboard.chisadin.site"}
+                {label: "Truy cập LHU Dashboard", url: "https://lhu-dashboard.chisadin.site"}
             ]
         }).then(() => {
             console.log(`Updated RPC: ${path}`)
@@ -122,11 +144,11 @@ const setActivityIdle = async () => {
         rpcClient.setActivity({
             details: "Không hoạt động",
             state: "Ở chế độ rảnh",
-            startTimestamp: new Date(),
+            startTimestamp: uptime,
             largeImageKey: "appicon",
             instance: false,
             buttons: [
-                {label: "Truy cập LHU Dashboard", "url": "https://lhu-dashboard.chisadin.site"}
+                {label: "Truy cập LHU Dashboard", url: "https://lhu-dashboard.chisadin.site"}
             ]
         })
     } catch (error) {
@@ -134,13 +156,21 @@ const setActivityIdle = async () => {
     }
 }
 
+const loginItemSettings = app.getLoginItemSettings();
+
+const SYSTEM_SETTINGS = {
+    autostart: loginItemSettings.openAtLogin || false,
+    minimizeToTray: loginItemSettings.openAsHidden || false // MacOS api deprecated so return false if undefined
+}
+
 const DEFAULT_SETTINGS: Settings = {
-    autoStart: false,
-    minimizeToTray: true,
+    autoStart: loginItemSettings.openAtLogin || false,
+    minimizeToTray: loginItemSettings.openAsHidden || false, // MacOS api deprecated so return false if undefined
     checkForUpdatesOnStart: true,
     notifyNextClassStartedSoon: true,
     minimizeOnClose: true,
-    hardwareAcceleration: true
+    hardwareAcceleration: true,
+    useDiscordRpc: true
 }
 
 const getConfig = (): Settings => {
@@ -159,9 +189,12 @@ const getConfig = (): Settings => {
 
     const mergedSettings: Settings = { ...DEFAULT_SETTINGS, ...settings }
 
-    writeFileSync(settingsFilePath, JSON.stringify(mergedSettings, null, 2))
+    // Ensure system settings are always applied
+    const finalSettings: Settings = { ...mergedSettings, ...SYSTEM_SETTINGS }
 
-    return mergedSettings
+    writeFileSync(settingsFilePath, JSON.stringify(finalSettings, null, 2))
+
+    return finalSettings
 }
 
 export const StartAfter = (dateString: string): string | null => {
@@ -208,23 +241,61 @@ const checkClassReminder = (classData: ScheduleItem | null) => {
         return;
     }
 
+    if (now.getTime() > classTime.getTime()) {
+        notifiedClasses.delete(classData.ID);
+        console.log(`Class ${classData}.ID has already started, removed from notified list`);
+        return;
+    }
+
     const diffMs =  remindTime.getTime() - now.getTime(); // còn bao nhiêu ms đến remindTime
     const diffMinutes = diffMs / (60 * 1000);
 
     // nếu còn ≤30 phút nhưng chưa qua thời gian remindTime và chưa thông báo
-    if (diffMinutes <= 30 && !notifiedClasses.has(classData.ID)) {
+    if (diffMinutes <= 30 && diffMinutes >= 0 && !notifiedClasses.has(classData.ID)) {
         console.log("Sending class reminder notification...");
-        new Notification({
-            title: `Sắp đến tiết học ${classData.TenMonHoc}!`,
-            body: `Tiết học ${classData.TenMonHoc} sẽ bắt đầu sau ${StartAfter(classData.ThoiGianBD) || '1 giây'} tại phòng ${classData.TenPhong}, ${classData.TenCoSo}.`,
-            icon: appicon
-        }).show();
+        createNotification(
+            `Sắp đến tiết học ${classData.TenMonHoc}!`,
+            `Tiết học ${classData.TenMonHoc} sẽ bắt đầu sau ${StartAfter(classData.ThoiGianBD) || '1 giây'} tại phòng ${classData.TenPhong}, ${classData.TenCoSo}.`
+        ).show();
         notifiedClasses.add(classData.ID);
         console.log(`Class ${classData.ID} notified and added to tracking`);
     }
 }
 
-const updateConfig = (newConfig: Partial<Settings>) => {
+const fetchNextClassAndCheck = async (data: User | null) => {
+    try {
+        const payload = { studentID: data?.UserID }; // just this
+        console.log("Payload:", payload);
+
+        if (data === null && currentlyLoggedInUser === null) {
+            console.log("No user data available, skipping fetch.");
+            return;
+        }
+        if (data !== null) {
+            currentlyLoggedInUser = data.UserID;
+        }
+
+
+        const res = await fetch(`https://calenapi.chisadin.site/next-class`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(currentlyLoggedInUser || payload),
+        });
+
+        if (!res.ok) {
+        console.error("Fetch failed:", res.statusText);
+        return;
+        }
+
+        const next_class: ScheduleItem = await res.json();
+
+        checkClassReminder(next_class);
+  } catch (err) {
+    console.error("Error fetching next class:", err);
+  }
+}
+
+const updateConfig = (newConfig: Partial<Settings>) => {    
     const currentConfig = getConfig()
     const updatedConfig = {...currentConfig, ...newConfig}
     const settingsFilePath = path.join(app.getPath('userData'), "settings.json")
@@ -274,11 +345,10 @@ const createWindow = () => {
         }
         e.preventDefault()
         win.hide()
-        new Notification({
-            title: "LHU Dashboard",
-            body: "Ứng dụng đang chạy dưới nền",
-            icon: appicon
-        }).show();
+        createNotification(
+            "LHU Dashboard",
+            "Ứng dụng đang chạy dưới nền"
+        ).show();
         setActivityIdle();
     })
     const tray = new Tray(appicon)
@@ -320,6 +390,7 @@ ipcMain.handle("getSettings", () => {
 ipcMain.handle("setMinimizeToTray", (_, bool: boolean) => {
     updateConfig({minimizeToTray: bool})
     console.log(`MinimizeToTray set to: ${bool}`)
+    app.setLoginItemSettings({ openAsHidden: bool });
 });
 
 ipcMain.handle("setCheckForUpdatesOnStart", (_, bool: boolean) => {
@@ -355,32 +426,30 @@ ipcMain.on("send-localstorage", async (event, data: User | null) => {
     return;
   };
 
-  try {
-    const payload = { studentID: data.UserID }; // just this
-    console.log("Payload:", payload);
-    const res = await fetch(`https://calenapi.chisadin.site/next-class`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      console.error("Fetch failed:", res.statusText);
-      return;
-    }
-
-    const next_class: ScheduleItem = await res.json();
-
-    checkClassReminder(next_class);
-  } catch (err) {
-    console.error("Error fetching next class:", err);
-  }
+    await fetchNextClassAndCheck(data);
 });
 
 ipcMain.handle("restartApp", () => {
     app.relaunch();
     app.exit(0);
 });
+
+ipcMain.handle('userLoggedOff', () => {
+    currentlyLoggedInUser = null;
+    console.log("User logged off, cleared currentlyLoggedInUser");
+});
+
+ipcMain.handle("setUseDiscordRpc", (_, bool: boolean) => {
+    updateConfig({useDiscordRpc: bool})
+    console.log(`UseDiscordRpc set to: ${bool}`)
+    if (bool && !rpcIntervalTask) {
+        createRpcClient();
+    }
+    if (!bool && rpcIntervalTask) {
+        cancelRpcClient();
+    }
+});
+
 
 // Quản lý mấy cái cron
 
@@ -389,7 +458,10 @@ let reminderCheckerInterval: NodeJS.Timeout;
 const createReminderChecker = () => {
     reminderCheckerInterval = setInterval(() => {
         if (mainWindow) {
-            mainWindow.webContents.send("get-localstorage");
+            if (currentlyLoggedInUser === null) {
+                mainWindow.webContents.send("get-localstorage");
+            }
+            fetchNextClassAndCheck(null);
         }
     }, 60_000);
 }
@@ -400,17 +472,34 @@ const clearReminderChecker = () => {
     }
 }
 
-const RpcChecker = () => setInterval(() => {
-    if (!rpcClient) return
-    if (lastInteraction === null || new Date().getTime() - lastInteraction >= 15e3) {
-        if (mainWindow && mainWindow.isVisible()) {
-            const url = new URL(mainWindow.webContents.getURL())
-            const path = url.pathname
-            setActivity(path)
-        } else {
-            setActivityIdle()
+let rpcIntervalTask: NodeJS.Timeout;
+
+const createRpcClient = () => {
+    rpcIntervalTask = setInterval(() => {
+        if (!rpcClient || !config().useDiscordRpc) return
+
+        if (!rpcClient.user) {
+            // The client is not logged in, attempt to log in again
+            rpcClient.login({ clientId: clientID }).catch(console.error)
+        }
+        if (lastInteraction === null || new Date().getTime() - lastInteraction >= 15e3) {
+            if (mainWindow && mainWindow.isVisible()) {
+                const url = new URL(mainWindow.webContents.getURL())
+                const path = url.pathname
+                setActivity(path)
+            } else {
+                setActivityIdle()
+            }
+        }
+}, 15_000);
+}
+
+const cancelRpcClient = () => {
+    if (rpcIntervalTask) {
+        clearInterval(rpcIntervalTask)
+        if (rpcClient) rpcClient.destroy()
     }
-}}, 15_000);
+}
 
 // Mấy cái dưới này để quản lý vòng đời của app
 
@@ -453,8 +542,9 @@ if (!gotTheLock) {
             }
         });
 
-        RpcChecker();
-        
+        if (config().useDiscordRpc) {
+            createRpcClient();
+        }        
 
     })
 }
