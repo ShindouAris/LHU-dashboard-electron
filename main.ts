@@ -279,7 +279,7 @@ const fetchNextClassAndCheck = async (data: User | null) => {
         const res = await fetch(`https://calenapi.chisadin.site/next-class`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(currentlyLoggedInUser || payload),
+        body: JSON.stringify(payload || {studentID: currentlyLoggedInUser}),
         });
 
         if (!res.ok) {
