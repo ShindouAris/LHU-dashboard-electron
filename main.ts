@@ -48,8 +48,8 @@ const uptime = new Date()
 
 const rpcClient = new Client({transport: "ipc"})
 type RouteKey =
-  "/" | "/home" | "/login" | "/schedule" | "/timetable" | "/weather" | "/toollhu/*" |
-  "/diemdanh" | "/mark" | "/qrscan" | "/parking" | "/settings" | "*"
+  "/" | "/home" | "/login" | "/schedule" | "/timetable" | "/weather" | "/toollhu" |
+  "/diemdanh" | "/mark" | "/qrscan" | "/parking" | "/settings" | "*" | '/chisaAI'
 
 const routeRPCMap: Record<RouteKey, { details: string; state: string }> = {
   "/": { details: "Trang chính", state: "Dashboard" },
@@ -63,7 +63,8 @@ const routeRPCMap: Record<RouteKey, { details: string; state: string }> = {
   "/qrscan": { details: "Quét QR", state: "📷" },
   "/parking": { details: "Gửi xe", state: "🅿" },
   "/settings": { details: "Cài đặt", state: "🛠️" },
-  "/toollhu/*": { details: "Tool LHU", state: "⚙️" },
+  "/toollhu": { details: "Tool LHU", state: "⚙️" },
+    "/chisaAI": { details: "Chisa AI", state: "🤖" },
   "*": { details: "Không xác định", state: "Lang thang 💀" },
 }
 
