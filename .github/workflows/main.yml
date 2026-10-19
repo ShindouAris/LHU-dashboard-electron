@@ -1,5 +1,8 @@
 name: Build & Release
 
+permissions:
+  contents: write 
+
 on:
   push:
     tags:
@@ -38,4 +41,4 @@ jobs:
           npx electron-builder --linux --x64 --arm64
         fi
       env:
-        GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
