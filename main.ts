@@ -19,6 +19,14 @@ const clientID = "1446675403581292706"
 
 const isIndevelopment = !app.isPackaged
 
+const isTrustedURL = (value: string) => {
+    try { return new URL(value).origin === (isIndevelopment ? 'http://localhost:5173' : 'https://lhu-dashboard.vercel.app') }
+    catch { return false }
+}
+const isTrustedSender = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) =>
+    event.sender === mainWindow?.webContents && event.senderFrame === event.sender.mainFrame && isTrustedURL(event.senderFrame.url)
+
+
 let lastInteraction: number | null = null;
 let lastRpcPath: string | null = null;
 
@@ -35,14 +43,18 @@ const getIconPath = () => {
   }
 
   // Kiểm tra nếu chạy từ packaged app (ASAR)
-  if (process.resourcesPath?.includes('app.asar')) {
-    return path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'build', `icon.${iconExt}`)
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'assets', 'build', `icon.${iconExt}`)
   }
   // Nếu chạy từ development
   return path.join(__dirname, 'assets', 'build', `icon.${iconExt}`)
 }
 
 const appicon = nativeImage.createFromPath(getIconPath())
+// Windows toast images use PNG; the application/tray keeps its platform icon.
+const notificationIcon = nativeImage.createFromPath(path.join(
+    app.isPackaged ? process.resourcesPath : __dirname, 'assets', 'build', 'icon.png'
+)).resize({ width: 256, height: 256 })
 
 const uptime = new Date()
 
@@ -72,8 +84,9 @@ const createNotification = (title: string, body: string): Notification => {
     const notification = new Notification({
         title: title,
         body: body,
-        icon: appicon
+        icon: notificationIcon
     })
+    notification.on('failed', (_, error) => console.error('Notification failed:', error))
     notification.on('click', () => {
         notification.close();
         if (mainWindow) {
@@ -103,7 +116,7 @@ rpcClient.on("disconnected", () => {
 })
 
 const setActivity = async (path: string) => {
-    if (!rpcClient || !clientID) return
+    if (!rpcClient || !clientID || !config().useDiscordRpc || !rpcClient.user) return
 
     if (lastInteraction !== null && new Date().getTime() - lastInteraction < 15e3 && lastRpcPath === path) return
 
@@ -137,12 +150,12 @@ const setActivity = async (path: string) => {
 }
 
 const setActivityIdle = async () => {
-    if (!rpcClient || !clientID) return
+    if (!rpcClient || !clientID || !config().useDiscordRpc || !rpcClient.user) return
     if (lastInteraction !== null && new Date().getTime() - lastInteraction < 15e3) return
     lastInteraction = new Date().getTime()
     try {
 
-        rpcClient.setActivity({
+        await rpcClient.setActivity({
             details: "Không hoạt động",
             state: "Ở chế độ rảnh",
             startTimestamp: uptime,
@@ -159,10 +172,6 @@ const setActivityIdle = async () => {
 
 const loginItemSettings = app.getLoginItemSettings();
 
-const SYSTEM_SETTINGS = {
-    autostart: loginItemSettings.openAtLogin || false,
-    minimizeToTray: loginItemSettings.openAsHidden || false // MacOS api deprecated so return false if undefined
-}
 // @ts-expect-error Build xong mất type nên kệ nó đi
 const DEFAULT_SETTINGS: Settings = {
     autoStart: loginItemSettings.openAtLogin || false,
@@ -187,16 +196,11 @@ const getConfig = (): Settings => {
             settings = {}
         }
     }
-    // @ts-expect-error Build xong mất type nên kệ nó đi
-    const mergedSettings: Settings = { ...DEFAULT_SETTINGS, ...settings }
-
-    // Ensure system settings are always applied
-    // @ts-expect-error Build xong mất type nên kệ nó đi
-    const finalSettings: Settings = { ...mergedSettings, ...SYSTEM_SETTINGS }
-
-    writeFileSync(settingsFilePath, JSON.stringify(finalSettings, null, 2))
-
-    return finalSettings
+    const mergedSettings = { ...DEFAULT_SETTINGS }
+    for (const key of Object.keys(DEFAULT_SETTINGS)) {
+        if (settings && typeof settings[key] === 'boolean') mergedSettings[key] = settings[key]
+    }
+    return mergedSettings
 }
 
 export const StartAfter = (dateString: string): string | null => {
@@ -231,7 +235,6 @@ const checkClassReminder = (classData: ScheduleItem | null) => {
     console.log("Checking class reminder...");
 
     const classTime = new Date(classData.ThoiGianBD);
-    const remindTime = new Date(classTime.getTime() - remindBeforeMinutes * 60 * 1000);
 
     const now = new Date();
 
@@ -249,11 +252,11 @@ const checkClassReminder = (classData: ScheduleItem | null) => {
         return;
     }
 
-    const diffMs =  remindTime.getTime() - now.getTime(); // còn bao nhiêu ms đến remindTime
+    const diffMs = classTime.getTime() - now.getTime();
     const diffMinutes = diffMs / (60 * 1000);
 
-    // nếu còn ≤30 phút nhưng chưa qua thời gian remindTime và chưa thông báo
-    if (diffMinutes <= 30 && diffMinutes >= 0 && !notifiedClasses.has(classData.ID)) {
+    // Chỉ nhắc trong 30 phút trước giờ học.
+    if (diffMinutes <= remindBeforeMinutes && diffMinutes > 0 && !notifiedClasses.has(classData.ID)) {
         console.log("Sending class reminder notification...");
         createNotification(
             `Sắp đến tiết học ${classData.TenMonHoc}!`,
@@ -266,7 +269,7 @@ const checkClassReminder = (classData: ScheduleItem | null) => {
 // @ts-expect-error Build xong mất type nên kệ nó đi
 const fetchNextClassAndCheck = async (data: User | null) => {
     try {
-        const payload = { studentID: data?.UserID }; // just this
+        const payload = { studentID: data?.UserID ?? currentlyLoggedInUser };
         console.log("Payload:", payload);
 
         if (data === null && currentlyLoggedInUser === null) {
@@ -281,7 +284,8 @@ const fetchNextClassAndCheck = async (data: User | null) => {
         const res = await fetch(`https://calenapi.chisadin.site/next-class`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload || {studentID: currentlyLoggedInUser}),
+        body: JSON.stringify(payload),
+        timeout: 15_000,
         });
 
         if (!res.ok) {
@@ -291,7 +295,7 @@ const fetchNextClassAndCheck = async (data: User | null) => {
         // @ts-expect-error Build xong mất type nên kệ nó đi
         const next_class: ScheduleItem = await res.json();
 
-        checkClassReminder(next_class);
+        if (payload.studentID === currentlyLoggedInUser) checkClassReminder(next_class);
   } catch (err) {
     console.error("Error fetching next class:", err);
   }
@@ -323,8 +327,17 @@ const createWindow = () => {
     // đừng mở link trong app pls 🙏🙏
 
     win.webContents.setWindowOpenHandler(({url}) => {
-        shell.openExternal(url)
+        try {
+            if (['https:', 'http:', 'mailto:'].includes(new URL(url).protocol)) void shell.openExternal(url).catch(console.error)
+        } catch { /* Ignore malformed URLs. */ }
         return {action: "deny"}
+    })
+
+    win.webContents.on('will-navigate', (event, url) => {
+        if (!isTrustedURL(url)) event.preventDefault()
+    })
+    win.webContents.on('will-redirect', (event, url) => {
+        if (!isTrustedURL(url)) event.preventDefault()
     })
 
     rpcClient.on("ready", () => {
@@ -376,31 +389,39 @@ const createWindow = () => {
 
 }
 
-// Handle IPC 
+// Handle IPC
+const handleIPC = (channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any) => {
+    ipcMain.handle(channel, (event, ...args) => {
+        if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
+        if (channel.startsWith('set') && (args.length !== 1 || typeof args[0] !== 'boolean')) throw new Error('Expected boolean setting')
+        return listener(event, ...args)
+    })
+}
 
-ipcMain.handle("setAutoStart", (_, bool: boolean) => {
+
+handleIPC("setAutoStart", (_, bool: boolean) => {
     // lưu setting
     updateConfig({autoStart: bool})
     console.log(`AutoStart set to: ${bool}`)
     app.setLoginItemSettings({ openAtLogin: bool }); // bật/tắt autostart
 });
 
-ipcMain.handle("getSettings", () => {
+handleIPC("getSettings", () => {
     return getConfig();
 });
 
-ipcMain.handle("setMinimizeToTray", (_, bool: boolean) => {
+handleIPC("setMinimizeToTray", (_, bool: boolean) => {
     updateConfig({minimizeToTray: bool})
     console.log(`MinimizeToTray set to: ${bool}`)
     app.setLoginItemSettings({ openAsHidden: bool });
 });
 
-ipcMain.handle("setCheckForUpdatesOnStart", (_, bool: boolean) => {
+handleIPC("setCheckForUpdatesOnStart", (_, bool: boolean) => {
     updateConfig({checkForUpdatesOnStart: bool})
     console.log(`CheckForUpdatesOnStart set to: ${bool}`)
 });
 
-ipcMain.handle("setNotifyNextClassStartedSoon", (_, bool: boolean) => {
+handleIPC("setNotifyNextClassStartedSoon", (_, bool: boolean) => {
     updateConfig({notifyNextClassStartedSoon: bool})
     if (bool && !reminderCheckerInterval) {
         createReminderChecker();
@@ -411,19 +432,23 @@ ipcMain.handle("setNotifyNextClassStartedSoon", (_, bool: boolean) => {
     console.log(`NotifyNextClassStartedSoon set to: ${bool}`)
 });
 
-ipcMain.handle("setMinimizeOnClose", (_, bool: boolean) => {
+handleIPC("setMinimizeOnClose", (_, bool: boolean) => {
     updateConfig({minimizeOnClose: bool})
     console.log(`MinimizeOnClose set to: ${bool}`)
 });
 
-ipcMain.handle("setHardwareAcceleration", (_, bool: boolean) => {
+handleIPC("setHardwareAcceleration", (_, bool: boolean) => {
     updateConfig({hardwareAcceleration: bool})
     console.log(`HardwareAcceleration set to: ${bool}`)
 });
 // @ts-expect-error Build xong mất type nên kệ nó đi
 ipcMain.on("send-localstorage", async (event, data: User | null) => {
+  if (!isTrustedSender(event)) return;
+  if (data !== null && (typeof data !== 'object' || typeof data.UserID !== 'string' || !data.UserID.trim())) return;
 //   console.log("LocalStorage data from React:", data);
   if (data === null) {
+    currentlyLoggedInUser = null;
+    notifiedClasses.clear();
     console.log("Skipping class reminder check, no user data.");
     return;
   };
@@ -431,17 +456,18 @@ ipcMain.on("send-localstorage", async (event, data: User | null) => {
     await fetchNextClassAndCheck(data);
 });
 
-ipcMain.handle("restartApp", () => {
+handleIPC("restartApp", () => {
     app.relaunch();
     app.exit(0);
 });
 
-ipcMain.handle('userLoggedOff', () => {
+handleIPC('userLoggedOff', () => {
     currentlyLoggedInUser = null;
+    notifiedClasses.clear();
     console.log("User logged off, cleared currentlyLoggedInUser");
 });
 
-ipcMain.handle("setUseDiscordRpc", (_, bool: boolean) => {
+handleIPC("setUseDiscordRpc", (_, bool: boolean) => {
     updateConfig({useDiscordRpc: bool})
     console.log(`UseDiscordRpc set to: ${bool}`)
     if (bool && !rpcIntervalTask) {
@@ -455,9 +481,10 @@ ipcMain.handle("setUseDiscordRpc", (_, bool: boolean) => {
 
 // Quản lý mấy cái cron
 
-let reminderCheckerInterval: NodeJS.Timeout;
+let reminderCheckerInterval: NodeJS.Timeout | undefined;
 
 const createReminderChecker = () => {
+    if (reminderCheckerInterval) return;
     reminderCheckerInterval = setInterval(() => {
         if (mainWindow) {
             if (currentlyLoggedInUser === null) {
@@ -471,12 +498,15 @@ const createReminderChecker = () => {
 const clearReminderChecker = () => {
     if (reminderCheckerInterval) {
         clearInterval(reminderCheckerInterval);
+        reminderCheckerInterval = undefined;
     }
 }
 
-let rpcIntervalTask: NodeJS.Timeout;
+let rpcIntervalTask: NodeJS.Timeout | undefined;
 
 const createRpcClient = () => {
+    if (rpcIntervalTask) return;
+    lastInteraction = null;
     rpcIntervalTask = setInterval(() => {
         if (!rpcClient || !config().useDiscordRpc) return
 
@@ -499,7 +529,8 @@ const createRpcClient = () => {
 const cancelRpcClient = () => {
     if (rpcIntervalTask) {
         clearInterval(rpcIntervalTask)
-        if (rpcClient) rpcClient.destroy()
+        rpcIntervalTask = undefined
+        if (rpcClient.user) void rpcClient.clearActivity().catch(console.error)
     }
 }
 
@@ -528,7 +559,7 @@ if (!gotTheLock) {
             autoUpdater.checkForUpdatesAndNotify()
         }
 
-        rpcClient.login({ clientId: clientID }).catch(console.error)
+        if (config().useDiscordRpc) rpcClient.login({ clientId: clientID }).catch(console.error)
 
         app.setLoginItemSettings({
             openAtLogin: config().autoStart,
@@ -553,7 +584,8 @@ if (!gotTheLock) {
 
 
 
-app.setAppUserModelId("LHU Dashboard");
+// Must match electron-builder's appId and the installed Start Menu shortcut.
+app.setAppUserModelId("com.chisadinchan.lhudashboard");
 
 
 app.on("activate", () => {

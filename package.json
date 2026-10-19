@@ -7,11 +7,15 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test.mjs"
   },
   "build": {
     "appId": "com.chisadinchan.lhudashboard",
     "productName": "LHU Dashboard",
+    "nsis": {
+      "shortcutName": "LHU Dashboard",
+      "createStartMenuShortcut": true
+    },
     "asarUnpack": [
       "assets/build/*",
       "preload.js"
