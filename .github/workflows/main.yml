@@ -41,4 +41,5 @@ jobs:
           npx electron-builder --linux --x64 --arm64
         fi
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ github.token }}
